@@ -52,6 +52,7 @@ func TestIsSystemOwnedHeaderIncludesAliases(t *testing.T) {
 		metadata.DestinationEndpointKey,
 		metadata.DestinationEndpointServedKey,
 		metadata.FlowQueueDurationHeaderKey,
+		metadata.FlowBandHeadroomRequestsHeaderKey,
 		errcommon.RequestDroppedReasonHeaderKey,
 		"Content-Length",
 		"traceparent",
