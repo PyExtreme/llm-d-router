@@ -26,7 +26,6 @@ import (
 	"sync"
 	"time"
 
-	configPb "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extProcPb "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
@@ -363,16 +362,6 @@ func terminationCauseFromGRPCTrailers(trailers *extProcPb.HttpTrailers) fwkrc.Te
 		}
 	}
 	return ""
-}
-
-// statusIsOK reports whether a status header carries 200. Proxies may set the
-// status in either RawValue or Value. Comparing string(header.RawValue) directly
-// does not allocate, unlike envoy.GetHeaderValue.
-func statusIsOK(header *configPb.HeaderValue) bool {
-	if len(header.RawValue) > 0 {
-		return string(header.RawValue) == "200"
-	}
-	return header.Value == "200"
 }
 
 func extractFairnessAndPriority(reqCtx *RequestContext) (string, string) {
@@ -720,16 +709,13 @@ func (s *StreamingServer) Process(srv extProcPb.ExternalProcessor_ProcessServer)
 			// served the request, and Envoy only reports that at the response phase.
 			reqCtx.Request.Metadata = envoy.ExtractMetadataValues(req)
 			respHeadersReceivedAt := time.Now()
-			// The traceEnabled guard is intentional: passing arguments to a disabled
-			// logger still boxes them into a heap-allocated slice, and this loop runs
-			// per header. statusIsOK does not allocate; the content-type check runs
-			// at most once per response.
+			// Skip building trace-log args per header when tracing is off.
 			traceEnabled := loggerTrace.Enabled()
 			for _, header := range v.ResponseHeaders.Headers.GetHeaders() {
 				if traceEnabled {
-					loggerTrace.Info("header", "key", header.Key, "value", string(header.RawValue))
+					loggerTrace.Info("header", "key", header.Key, "value", envoy.GetHeaderValue(header))
 				}
-				if (header.Key == reqcommon.PseudoHeaderStatus || header.Key == reqcommon.HeaderStatus) && !statusIsOK(header) {
+				if (header.Key == reqcommon.PseudoHeaderStatus || header.Key == reqcommon.HeaderStatus) && envoy.GetHeaderValue(header) != "200" {
 					reqCtx.responseStatusCode = errcommon.ModelServerError
 				} else if header.Key == reqcommon.HeaderContentType {
 					mediaType, _, _ := strings.Cut(envoy.GetHeaderValue(header), ";")
